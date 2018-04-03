@@ -1,0 +1,236 @@
+---
+title: "Smoking Mothers and Infant Weights - BootStrapping"
+author: "Wahab Seraj Ahmady"
+date: "February 13, 2018"
+output:
+  pdf_document: default
+  html_document: default
+---
+#1.	Take a simple random sample of 10 observations (births) using the two lines of code below.  The function set.seed makes it so that everyone will be using the same sample.
+#a.	Use the sample average to estimate the average weight of the mothers, calculate the estimated standard error of these estimates and form a 95% confidence interval for the average of the population (assuming normality works).
+
+```{r}
+#Sampling and Computation
+set.seed(7)
+srs <- sample(na.omit(infants$wt),10)
+sample_mean <- mean(srs)
+estimated_std_error <- (sd(srs)/sqrt(10))
+estimated_std_error
+sample_mean
+```
+
+```{r}
+#Upper and Lower bounds for the confidence interval
+CI_lower <- sample_mean - qnorm(0.95)*estimated_std_error
+CI_upper <- sample_mean + qnorm(0.95)*estimated_std_error
+srs_CI = c(CI_lower,CI_upper)
+srs_CI
+```
+#b.	Repeat 1000 times (without using the set.seed function) to get 1000 different confidence intervals.  How many of them do you expect to cover the true average?  How many do?  Note that in practice you would be unable to do this since you only get one sample.
+
+```{r}
+# 1000 Confidence Intervals (w/o setseed function)
+rd_srs <- sample(na.omit(infants$wt),10)
+upper_bounds = c()
+lower_bounds = c()
+dev_mean = c()
+for(i in 1:1000)
+{
+rd_srs <- sample(na.omit(infants$wt),10)
+spl_mean <- mean(rd_srs)
+spl_err <- sd(rd_srs)/sqrt(10)
+dev_mean <- c(dev_mean,spl_mean)
+new_CI_lower <- spl_mean - abs(qnorm(0.975)*spl_err)
+new_CI_upper <- spl_mean + abs(qnorm(0.975)*spl_err)
+lower_bounds <- c(lower_bounds,new_CI_lower)
+upper_bounds <- c(upper_bounds,new_CI_upper)
+}
+#constructed a matrix with two columns
+Sampling_CI <- t(rbind(lower_bounds,upper_bounds))
+#I expect 95% of the CIs to cover the true average because if I construct a 1000 95% confidence intervals, theoretically around 950 of them should contain the true average.
+infantwt <- infants$wt
+tru_mean <- mean(na.omit(infantwt))
+counter <- as.integer(0)
+for(i in 1:1000)
+{
+if(tru_mean >= Sampling_CI[i,1] & tru_mean <= Sampling_CI[i,2])
+{
+counter <- counter + 1
+}
+}
+head(Sampling_CI)
+counter
+#The variable counter holds the number of confidence intervals that contains the true mean. Thus, 90.9% of the confidence intervals contained the true mean.
+```
+#c.	Calculate the SD of the sample averages.  Is it close to the estimated standard error from a)?  Make a histogram of the sample averages to see if it seems plausible that the probability histogram for the sample average follows the normal curve pretty closely.  Make a quantile-quantile plot to further investigate.  Does it seem like the confidence interval is valid?  
+```{r}
+sd(dev_mean)
+#The SD of the sample averages is significantly larger than the SE of part(1a). The SE of part (1a) is 4.912682. Whereas, SD of the sample averages is 6.684132.
+```
+
+```{r}
+#the histogram of the sample averages
+hist.default(dev_mean)
+```
+
+```{r}
+#The confidence interval seems valid because the bulk of the data follows the normal line. However, there is a rapid decline on the left tail and the data is skewed to the left with a longer right tail.
+qqnorm(dev_mean)
+qqline(dev_mean)
+```
+#2.	Start with your original sample and use it to construct a bootstrap population. You can use any code from the lecture code from Feb 2, but you'll need to understand how it works.  Don't worry about the fact that since the population size is not an integer multiple of the sample size, the bootstrap population won't be exactly the same size as the original population.  This part of the lab WOULD be possible to do in practice.
+#a.	Using that bootstrap population, get 1000 simple random samples of size 10.  For each, get the sample average and make a histogram of these sample averages.  Put a vertical line through the average of the bootstrap population.  Calculate the SD of the sample averages.  Is it close to the estimated SE from 1a) above?
+
+```{r}
+#bootstrap function
+bootStrap = function(mySample, popSize = NULL, B = 1000, repl = FALSE){
+if (repl) {
+# Bootstrap should be done the same way as original sample, usually without rep
+return(replicate(B, mean(sample(mySample, length(mySample), TRUE))))
+} else {
+vals = sort(unique(mySample))
+counts = table(mySample)
+# makes the bootstrap pop as rounded version of sample, not quite right
+bootPop = rep(vals, round(counts * popSize / length(mySample)))
+return(list(bootPop,
+bootSamps = replicate(B,mean(sample(bootPop, length(mySample), FALSE))))
+)
+}
+}
+```
+
+```{r}
+#Bootstrap Population (1000 sample of size 10 => Population Size = 10000)
+srs_boot <- sample(na.omit(infants$wt), 10)
+samp_boot <- bootStrap(srs_boot, popSize = 1000)
+bootSampAvg <- c(samp_boot[[2]])
+hist(bootSampAvg, breaks = 50)
+abline(v= mean(bootSampAvg), col = 'red')
+```
+
+```{r}
+#Standard Error
+sd(bootSampAvg)
+#The Estimated Standard Error of 1a) is 4.9 The bootstrap standard deviation is 4.19. However, if the bootstrap code is run again, there is a  significant differnce in the bootstrap sample average variance. This is largely due to the fact that the initial ten samples that the bootstrap is highly varient. 
+#Standard Error
+```
+#b.	Construct a 95% bootstrap confidence interval by taking the 2.5 percentile and the 97.5 percentile of the bootstrap sample averages.  How does it compare to the confidence interval you got in 1a)?
+```{r}
+#the 95% Confidence Interval for the bootstrap sample averages
+quantile(bootSampAvg, prob = c(0.025, 0.975))
+#The Confidence Interval for part(1a) is (126.6,142.8). The bootstrap sample average confidence interval is (118.1,134.5). The true mean is 128.6258. The bootstrap confidence interval is more accurate in terms of including the true mean. Since the lower bound of the first sample confidence interval is extremeley close to the true mean, it might produce some skewed results. Whereas, the bootstrap confidence interval(if repeatidly constructed) is more likely to contain the true mean.
+
+```
+
+```{r}
+#Sampling and Computation
+set.seed(7)
+srs <- sample(na.omit(infants$wt),100)
+sample_mean <- mean(srs)
+estimated_std_error <- (sd(srs)/sqrt(100))
+estimated_std_error
+sample_mean
+```
+#3.	Repeat all parts of 1) and 2) with a sample size of 100 instead of 10.
+```{r}
+#Upper and Lower bounds for the confidence interval
+CI_lower <- sample_mean - qnorm(0.95)*estimated_std_error
+CI_upper <- sample_mean + qnorm(0.95)*estimated_std_error
+srs_CI = c(CI_lower,CI_upper)
+srs_CI
+```
+
+```{r}
+# 1000 Confidence Intervals (w/o setseed function)
+rd_srs <- sample(na.omit(infants$wt),100)
+upper_bounds = c()
+lower_bounds = c()
+dev_mean = c()
+for(i in 1:1000)
+{
+rd_srs <- sample(na.omit(infants$wt),100)
+spl_mean <- mean(rd_srs)
+spl_err <- sd(rd_srs)/sqrt(100)
+dev_mean <- c(dev_mean,spl_mean)
+new_CI_lower <- spl_mean - abs(qnorm(0.975)*spl_err)
+new_CI_upper <- spl_mean + abs(qnorm(0.975)*spl_err)
+lower_bounds <- c(lower_bounds,new_CI_lower)
+upper_bounds <- c(upper_bounds,new_CI_upper)
+}
+#constructed a matrix with two columns
+Sampling_CI <- t(rbind(lower_bounds,upper_bounds))
+#I expect 95% of the CIs to cover the true average
+infantwt <- infants$wt
+tru_mean <- mean(na.omit(infantwt))
+counter <- as.integer(0)
+for(i in 1:1000)
+{
+if(tru_mean >= Sampling_CI[i,1] & tru_mean <= Sampling_CI[i,2])
+{
+counter <- counter + 1
+}
+}
+head(Sampling_CI)
+counter
+#Since counter = 961, approximately 96.1% of the confidence intervals contained the true mean.
+```
+
+
+```{r}
+sd(dev_mean)
+#The SD of the sample averages is significantly smaller than the SE of part(1a). The SE of part (1a) is 4.912682. Whereas, SD of the sample averages is 1.99775. Therefore, an increased sample size decreases variance.
+```
+
+```{r}
+#the histogram of the sample averages
+hist.default(dev_mean)
+```
+
+```{r}
+#The confidence interval seems valid because the bulk of the data follows the normal line very closely. However, there is a faster decline on both tails.
+qqnorm(dev_mean)
+qqline(dev_mean)
+```
+
+```{r}
+#bootstrap function
+bootStrap = function(mySample, popSize = NULL, B = 1000, repl = FALSE){
+if (repl) {
+# Bootstrap should be done the same way as original sample, usually without rep
+return(replicate(B, mean(sample(mySample, length(mySample), TRUE))))
+} else {
+vals = sort(unique(mySample))
+counts = table(mySample)
+# makes the bootstrap pop as rounded version of sample, not quite right
+bootPop = rep(vals, round(counts * popSize / length(mySample)))
+return(list(bootPop,
+bootSamps = replicate(B,mean(sample(bootPop, length(mySample), FALSE))))
+)
+}
+}
+```
+
+```{r}
+#Bootstrap Population (1000 sample of size 100)
+srs_boot <- sample(na.omit(infants$wt), 100)
+samp_boot <- bootStrap(srs_boot, popSize = 1000)
+bootSampAvg <- c(samp_boot[[2]])
+hist(bootSampAvg, breaks = 50)
+abline(v= mean(bootSampAvg), col = 'red')
+```
+
+```{r}
+#Standard Error
+sd(bootSampAvg)
+#The Estimated Standard Error of 1a) is 4.912. The bootstrap standard deviation is 1.769. There is a clear difference between the two modes of sampling. Bootstrap reduced the variance of sampling.
+#Standard Error
+```
+
+```{r}
+#the 95% Confidence Interval for the bootstrap sample averages
+quantile(bootSampAvg, prob = c(0.025, 0.975))
+#The Confidence Interval for part(1a) is (126.6,142.8). The bootstrap sample average confidence interval is (123.374,130.2). The true mean is 128.6258. The bootstrap confidence interval is more accurate in terms of including the true mean. Since the lower bound of the first sample confidence interval is extremeley close to the true mean, it might produce some skewed results. Whereas, the bootstrap confidence interval(if repeatidly constructed) is more likely to contain the true mean.
+
+```
+
+

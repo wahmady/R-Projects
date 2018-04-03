@@ -1,0 +1,126 @@
+---
+title: "DNA Detective"
+author: "Wahab Seraj Ahmady"
+date: "March 22, 2018"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+
+##INTRODUCTION:
+
+  According to MedicinePlus.gov, “Cytomegalovirus (CMV) is a virus found around the world. It is related to the viruses that cause chickenpox and infectious mononucleosis (mono). Between 50 percent and 80 percent of adults in the United States have had a CMV infection by age 40.” 
+
+  What if we could actually dive deep into a level in which we could spot the origin of replication? This idea does not seem so far-fetched once we see that there might be patterns in the CMV DNA sequence
+
+  “The human cytomegalovirus (CMV) is a potentially life-threatening disease for people with suppressed or deficient immune systems. To develop strategies for combating the virus, scientists study the way in which the virus replicates. In
+particular, they are in search of a special place on the virus’ DNA that contains instructions for its reproduction; this area is called the origin of replication.
+
+
+  To find the origin of replication, DNA is cut into segments and each segment is tested to determine whether it can replicate. If it does not replicate, then the origin of replication must not be contained in the segment. A statistical investigation of the DNA to identify unusually dense clusters of palindromes can help narrow the search and potentially reduce the amount of testing needed to find the origin of replication. However, for this lab, the search will be restricted to looking for unusual clusters of complementary palindromes.” (Nolan/Speed)
+
+
+
+##DATA:
+
+  “Chee et al. ([CBB+90]) published the DNA sequence of CMV in 1990. Leung et al. ([LBBK91]) implemented search algorithms in a computer program to screen the sequence for many types of patterns. Altogether, 296 palindromes were found that were at least 10 letters long. The longest ones found were 18 letters long. They occurred at locations 14719, 75812, 90763, and 173863 along the sequence. Altogether, the CMV DNA is 229,354 letters long.” (Nolan/Speed)
+
+
+##Methodology:
+
+  According to the textbook Stat Labs: Mathematical Statistics Through Application, Deborah Nolan and Terry Speed state, “Chee et al. ([CBB+90]) published the DNA sequence of CMV in 1990. Leung et al. ([LBBK91]) implemented search algorithms in a computer program to screen the sequence for many types of patterns. Altogether, 296 palindromes were found that were at least 10 letters long. The longest ones found were 18 letters long. They occurred at locations 14719, 75812, 90763, and 173863 along the sequence. Altogether, the CMV DNA is 229,354 letters long.” (76-77). 
+
+	The subject under study is a list of palindrome locations within a range of 1 to 229,354. The main outcome of this study is to answer the following questions: How do we find clusters of palindromes? How do we determine whether a cluster is just a chance occurrence or a potential replication site? 
+
+
+##Results:
+
+  First off, the most obvious test to conduct would be to plot a graph that would visualize the clusters of palindromes. Comparing the plotted graph to a simulated random uniform distribution would be a great start. This would provide insight to whether the occurrences of palindromes all have an equal chance. If so, then there would be no conclusions that we could draw from the data. Fortunately, our job would be over. Unfortunately, we would be no closer to finding a way to stop the disease from replicating. 
+
+```{r Random Scatter}
+hcmvdata <- read.csv("hcmv.data")
+start_val <- seq(0, 229354, 775)
+starting_val <- as.integer(start_val)
+x <- unlist(hcmvdata, use.names=FALSE)
+count_vector <- c()
+
+for (y in starting_val){
+  j <- y + 775
+  print(sum(x>= y & x<= j))
+  number <- sum(x>= y & x<= j)
+  count_vector <- c(count_vector, number)
+}
+sim_rand_unif <- runif(296, 1, 229354)
+sim_rand_unif2 <- runif(296, 1, 229354)
+hist(count_vector, labels = TRUE, col = "cyan", xlab = "location", ylab = "Frequency", main = "Histogram of Palindrome Distribution")
+hist(sim_rand_unif, labels = TRUE, col = "cyan", xlab = "location", ylab = "Frequency", main = "Histogram of Simulated Distribution #1")
+hist(sim_rand_unif2, labels = TRUE, col = "cyan", xlab = "location", ylab = "Frequency", main = "Histogram of Simulated Distribution #2")
+qqnorm(hcmvdata$location, col = "cyan4")
+qqline(hcmvdata$location, col = "brown3")
+```
+
+
+  From these graphs we can infer that the distribution is not roughly normal nor roughly uniform. What this means for us is that these probability distributions can not predict the occurances of the clustered palindromes. This means that it the clusters can still be indications of a origin of replication!
+
+  Secondly, we can examine the spacings in between the arrivals of palindromes and sums of consecutive pairs, triplets, etc. Can we determine if there is a rate that predicts the occurances of these clusters of palindromes?
+  
+```{r spacings}
+spacings <- c()
+for (x in 1:295)
+{
+  spacings <- c(spacings, hcmvdata[x+1,1] - hcmvdata[x,1])
+  
+}
+set.seed(296)
+MLE_EXP <- sum(spacings)/296
+sim_exp <- rexp(296,MLE_EXP)
+sim_gam1 <- rgamma(296,2,MLE_EXP)
+sim_gam2 <- rgamma(296,3,MLE_EXP)
+
+hist(spacings, labels = TRUE, col = "dodgerblue4", xlab = "Spacings", ylab = "Frequency", main = "Histogram of Exponential Distribution of the Palindrome Spacings")
+hist(sim_gam1, labels = TRUE, col = "dodgerblue3", xlab = "Spacings", ylab = "Frequency", main = "Histogram of Gamma2 Distribution of the Palindrome Spacings")
+hist(sim_gam2, labels = TRUE, col = "dodgerblue2", xlab = "Spacings", ylab = "Frequency", main = "Histogram of Gamma3 Distribution of the Palindrome Spacings")
+```
+
+  From these graphs we can visually conclude that the palindrome occurances do not follow the gamma(2+) distribution. However, it could still be an exponential. We can be forsure whether or not the palindromes follow a distribution with our next test. We are going to be conducting a formal Chi-Squared Test. This will actually provide us with a percentage of whether or not the palindromes follow a Poisson distribution! The lower the better.
+
+```{r Counts}
+#NULL: The palindromes follow a poisson distributions.
+#ALT: It does not. Ho < Ha. A single-tailed test.
+library(knitr)
+p_loc <- hcmvdata$location
+break_points <- seq(0, 229354, by = 5000) #46d interval of 5000
+
+tick = 5000
+max(hcmvdata)/tick
+breaks <- c()
+for (i in 0:46)
+{
+  breaks = c(breaks, i*tick)
+}
+tb_hist <- hist(p_loc, breaks, main = "Histogram of Palindrome Counts", xlab = "Location", ylab = "Frequency", col = "cyan")
+tb_hist_counts <- tb_hist$counts
+p_int <- c("0-2","3","4",'5','6','7','8','9','10',"11+")
+s_counts <- c(8,6,4,4,6,9,5,2,0,2)
+
+num_intervals <- length(tb_hist_counts)
+rate = length(p_loc)/length(tb_hist_counts)
+new <- dpois(s_counts[1:10], lambda = rate)
+
+e <- 46 * dpois(0:2, lambda = rate)
+e2 <- c(sum(e), 46*dpois(3:10,rate))
+e3 <- sum(46*dpois(11:18, rate))
+m_vec<- c(e2,e3)
+
+CHI <- sum((s_counts - m_vec)^2 /m_vec)
+
+1 - pchisq(CHI, 9)
+
+hist(tb_hist_counts, labels = TRUE, xlab = "BY BINS of 5000",ylab = "COUNTS", main = "Counts of Palindromes by Bin", col = "plum4", breaks  = 15)
+
+#With a probability of 0.0026 and we can reject the Null at a 5% Significance Level.
+
+```
+
+  In conclusion, from this Chi-Squared test we can conclude with a lot of confidence that it does not follow a poisson distribution. This means that these palindromes could indicate an origin of replication. This answers the original question of whether or not the clusters are just due to chance. From the evidence we can be quite certain that the palindromes are in fact not just random.
