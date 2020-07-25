@@ -1,0 +1,224 @@
+---
+title: "IEOR Project"
+author: "Wahab Seraj Ahmady"
+date: "November 27, 2018"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+library(ggplot2)
+library(dplyr)
+library(GGally)
+library(caTools)
+library(ROCR)
+library(MASS)
+library(caTools) 
+library(tidyverse)
+library(readxl)
+library(stringr) 
+library(softImpute) 
+library(reshape2) 
+library(plyr) 
+library(dplyr)
+library(ranger)
+library(caret)
+
+
+OSR2 <- function(predictions, train, test) { SSE <- sum((test - predictions)^2)
+SST <- sum((test - mean(train))^2)
+r2 <- 1 - SSE/SST
+return(r2) }
+
+
+apple <- read.csv("Apple_price(bro).csv")
+summary(apple)
+
+hist(apple$user_rating)
+
+train.ids <- sample(nrow(apple), 0.70*nrow(apple))
+train <- apple[train.ids, ]
+test_data <- apple[-train.ids, ]
+
+apple$size_bytes
+
+#train regression
+traindata_X <- train[c("price", "rating_count_tot", "prime_genre", "size_bytes")]
+traindata_Y <- train[c("user_rating")]
+
+
+
+testdata_X <- test_data[c("price", "rating_count_tot", "prime_genre", "size_bytes")]
+testdata_Y <- test_data[c("user_rating")]
+
+
+
+linmod <- lm(user_rating ~ prime_genre + price + rating_count_tot + size_bytes + cont_rating, data = train) 
+summary(linmod)
+Lin_Model_Predictions = predict(linmod, newdata = test_data) 
+summary(Lin_Model_Predictions)
+MAE_Lin = mean(abs(Lin_Model_Predictions - test_data$user_rating))
+RMSE_Lin = sqrt(mean((Lin_Model_Predictions - test_data$user_rating)^2))
+OSR_Lin = OSR2(Lin_Model_Predictions, train$user_rating, test_data$user_rating)
+MAE_Lin
+RMSE_Lin
+OSR_Lin
+
+ggcoef(
+  linmod,
+  vline_color = "red",
+  vline_linetype =  "solid",
+  errorbar_color = "blue",
+  errorbar_height = .25,
+  exclude_intercept = TRUE
+)
+
+
+
+#Predictions are weak in a regression sense. We can not use a linear model
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+
+#apple2 <- read.csv("Apple_price(new).csv")
+#summary(apple2)
+
+#train.ids <- sample(nrow(apple2), 0.70*nrow(apple2))
+#train2 <- apple2[train.ids, ]
+#test_data2 <- apple2[-train.ids, ]
+
+
+#train regression
+#traindata_X2 <- train[c("price", "rating_count_tot", "prime_genre")]
+#traindata_Y2 <- train[c("user_rating")]
+
+#testdata_X2 <- test_data2[c("price", "rating_count_tot", "prime_genre")]
+#testdata_Y2 <- test_data2[c("user_rating")]
+
+
+
+#str(train2)
+
+LogRegModel <- glm(user_rating ~ price + rating_count_tot + prime_genre + size_bytes + cont_rating, data = train, family="binomial")
+
+summary(LogRegModel)
+
+
+
+logpred <- predict(LogRegModel, newdata=train, type="response")
+table(train$user_rating, logpred > 0.5)
+
+# Test Set Prediction
+
+predLogTest <- predict(LogRegModel, newdata=test_data, type="response")
+table(test_data$user_rating, predLogTest > 0.5)
+
+#Figure out baseline
+#ROC
+
+
+# ROC Curve
+roc_pred <- prediction(predLogTest, test_data$user_rating)
+logofperformance <- performance(roc_pred, "tpr", "fpr")
+plot(logofperformance, colorize = TRUE)
+abline(0, 1)
+as.numeric(performance(roc_pred, "auc")@y.values)
+
+#LDA
+
+LdaMod <- lda(user_rating ~ price + rating_count_tot + prime_genre + size_bytes + cont_rating, data = train)
+                
+summary(LdaMod)
+                
+TestLDApred <- predict(LdaMod, newdata= test_data)
+prob_TestLDApred <- TestLDApred$posterior[,2]
+
+roc_lda_pred <- prediction(prob_TestLDApred, test_data$user_rating)
+performance_of_lda <- performance(roc_lda_pred, "tpr", "fpr")
+plot(performance_of_lda, colorize = TRUE)
+abline(0, 1)
+as.numeric(performance(roc_lda_pred, "auc")@y.values)
+
+plot(logofperformance, col="violetred3")
+plot(performance_of_lda, col="steelblue4", add=TRUE)
+abline(0,1)
+knitr::opts_chunk$set(echo = TRUE)
+
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r }
+#use cart model and random forest
+tableAccuracy <- function(test, pred) {
+  t = table(test, pred)
+  a = sum(diag(t))/length(test)
+  return(a)
+}
+library(caTools) # splits
+library(rpart) # CART
+library(rpart.plot) # CART plotting
+library(caret) # cross validation
+train$user_rating
+str(train)
+
+
+train$user_rating <- factor(train$user_rating, levels = c(0, 1), ordered = TRUE)
+
+
+set.seed(3100)
+train.cart = train(user_rating ~ price + rating_count_tot + prime_genre + size_bytes + cont_rating,
+                   data = train,
+                   method = "rpart",
+                   tuneGrid = data.frame(cp = seq(0,0.4,0.002)),
+                   trControl = trainControl(method = "cv", number = 10),
+                   metric = "Accuracy")
+train.cart
+train.cart$results
+
+ggplot(train.cart$results, aes(x = cp, y = Accuracy)) + geom_point(size = 2) + geom_line() + 
+  ylab("CV Accuracy") + theme_bw() + 
+  theme(axis.title=element_text(size=18), axis.text=element_text(size=18))
+mod.cart = train.cart$finalModel
+prp(mod.cart)
+
+
+test_data.mm = as.data.frame((model.matrix(user_rating~.+0,data= test_data)))
+predict.cart = predict(mod.cart, newdata = test_data.mm, type = "class")
+
+table(test_data$user_rating, predict.cart)
+tableAccuracy(test_data$user_rating, predict.cart)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,252 @@
+---
+title: 'Recommending Songs to Music Listeners '
+author: "Wahab Seraj Ahmady"
+output:
+  word_document: default
+  html_document: default
+---
+#There are 809 song entries and there are 2421 user entries. The ratings take on values from 1 to 3.42 in the dataset. In the dataset there are two parameters, the first is user and the second is song. We have 266256 observations in the test set to work with. The top songs are You're The One by Dwight Yoakam, Undo by Bjork Rock, and Secrets by One Republic. 
+#Here are is the MAE, RMSE, and OSR^2 on the test set.
+[1] 0.1811862
+[1] 0.2380445
+[1] 0.2907376
+
+#There are three parameters the low rank collaborative filtering model, the users, and the songs to predict the ratings. There are still 266256 observations to train the model on. I selected k = 5, because it was the k that minimized the MAE while maximizing the number of archetypes to ensure diversity. Here are the MAE, RMSE, and OSR^2:
+[1] 0.1747727
+[1] 0.2346509
+[1] 0.3108157
+#I used two different models, one was linear regression and the other was random forest. The MAE, RMSE, and OSR^2 for Linear Regression was:
+[1] 0.1741945
+[1] 0.2337919
+[1] 0.3158529.
+#And the same for the random forest model was: 
+[1] 0.04531238
+[1] 0.05801211
+[1] 0.3260184
+#After implimenting the collaborative filtering model the we see that with the MAE, RMSE, and OSR^2 of,
+[1] 0.04394403
+[1] 0.05719146
+[1] 0.344952
+#we see that the incrased OSR^2 and other stats indicated that the additional features associated with songs add a sizable amount of predictive power to the model, a marginal amount of increase from the random forest.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r data cleaning}
+#install.packages("softImpute") 
+#install.packages("tidyverse") 
+#install.packages("ranger")
+library(caTools) 
+library(tidyverse)
+library(readxl)
+library(stringr) 
+library(softImpute) 
+library(reshape2) 
+library(plyr) 
+library(dplyr)
+library(ranger)
+
+OSR2 <- function(predictions, train, test) { SSE <- sum((test - predictions)^2)
+SST <- sum((test - mean(train))^2)
+r2 <- 1 - SSE/SST
+return(r2) }
+
+
+```
+
+```{r cleaning}
+#Loading in the data
+music_ratings <- read.csv("MusicRatings.csv")
+songs = read.csv('songs.csv')
+users = read.csv('users.csv')
+#cleaning the data
+
+set.seed(791)
+train.ids <- sample(nrow(music_ratings), 0.92*nrow(music_ratings))
+initial_train <- music_ratings[train.ids, ]
+test_data <- music_ratings[-train.ids, ]
+
+#split the training data into 3 sets: Traning, ValidationSetA, and ValidationSetB
+
+val.ids <- sample(nrow(initial_train), 0.08695766*nrow(initial_train))
+train_data <- initial_train[-val.ids,]
+initial_valset <- initial_train[val.ids,]
+
+val.idA <- sample(nrow(initial_valset), 0.5*nrow(initial_valset))
+valsetA <- initial_valset[val.idA,]
+valsetB <- initial_valset[-val.idA,]
+```
+
+```{r collaborative filtering}
+#Create Matrix
+mat.train = Incomplete(train_data$userID, train_data$songID, train_data$rating)
+
+mat.train_biscale = biScale(mat.train, maxit = 1000, row.scale = FALSE, col.scale = FALSE)
+
+#Getting Alpha and Beta Values
+biScale_alpha = attr(mat.train_biscale, "biScale:row") 
+biScale_beta = attr(mat.train_biscale, "biScale:column") 
+biScale_alpha = as.data.frame(biScale_alpha)
+
+biScale_beta = as.data.frame(biScale_beta) 
+#Sorting Alpha and Beta Values
+biScale_alpha_sorted = biScale_alpha[order(-biScale_alpha$center), ] 
+biScale_beta_sorted = biScale_beta[order(-biScale_beta$center), ] 
+
+#Adding Values to Data Tables 
+users$Alpha = biScale_alpha$center 
+songs$Beta = biScale_beta$center
+#Part b
+songs[which(songs$songID==54), ] 
+songs[which(songs$songID==26), ] 
+songs[which(songs$songID==439), ]
+
+
+test_data = join(test_data, users[,c("userID", "Alpha")], by = "userID", type = "left")
+test_data = join(test_data, songs[,c("songID", "Beta")], by = "songID", type = "left") 
+test_data$Predictions = test_data$Alpha + test_data$Beta
+MAE = mean(abs(test_data$Predictions - test_data$rating))
+RMSE = sqrt(mean((test_data$Predictions - test_data$rating)^2))
+OSR = OSR2(test_data$Predictions, train_data$rating, test_data$rating) 
+MAE
+RMSE
+OSR
+
+```
+
+```{r cross validation}
+
+#partc, there are three parameters in the model. There are 266256 observations to train with.
+mae.vals = rep(NA, 20) 
+for (rnk in seq_len(20)) {
+print(str_c("Trying rank.max = ", rnk))
+model = softImpute(mat.train_biscale, rank.max = rnk, lambda = 0, maxit = 1000)
+val_pred = impute(model, valsetA$userID, valsetA$songID)
+mae.vals[rnk] = mean(abs(val_pred - valsetA$rating))
+}
+
+mae.val.df <- data.frame(rnk = seq_len(20), mae = mae.vals)
+
+ggplot(mae.val.df, aes(x = rnk, y = mae)) + geom_point(size = 3) + ylab("Validation MAE") + xlab("Number of Archetypal Users") +  theme_bw() + theme(axis.title=element_text(size=18),  axis.text=element_text(size=18))
+
+#Part C subpart 3
+# choose k = 3
+Final_model = softImpute(mat.train_biscale, rank.max = 3, lambda = 0, maxit = 1000) 
+Test_Prediction = impute(Final_model, test_data$userID, test_data$songID)
+MAE_Final = mean(abs(Test_Prediction - test_data$rating)) 
+RMSE_Final = sqrt(mean((Test_Prediction - test_data$rating)^2))
+OSR_Final = OSR2(Test_Prediction, train_data$rating, test_data$rating) 
+MAE_Final
+RMSE_Final
+OSR_Final
+#Part D
+
+```
+
+```{r Linear Model}
+train_data$cf = impute(Final_model, train_data$userID, train_data$songID) 
+test_data$cf = impute(Final_model, test_data$userID, test_data$songID)
+valsetB$cf = impute(Final_model, valsetB$userID, valsetB$songID)
+train_data = join(train_data, songs[,c("songID", "genre")], by = "songID", type = "left")
+train_data = join(train_data, songs[, c("songID", "year")], by = "songID", type = "left") 
+test_data = join(test_data, songs[,c("songID", "genre")], by = "songID", type = "left") 
+test_data = join(test_data, songs[, c("songID", "year")], by = "songID", type = "left")
+valsetB = join(valsetB, songs[,c("songID", "genre")], by = "songID", type = "left") 
+valsetB = join(valsetB, songs[, c("songID", "year")], by = "songID", type = "left")
+
+
+Train_Lin_Model = lm(rating ~ genre + cf + year, data = train_data) 
+summary(Train_Lin_Model)
+Lin_Model_Predictions = predict(Train_Lin_Model, newdata = test_data) 
+summary(Lin_Model_Predictions)
+MAE_Lin = mean(abs(Lin_Model_Predictions - test_data$rating))
+RMSE_Lin = sqrt(mean((Lin_Model_Predictions - test_data$rating)^2))
+OSR_Lin = OSR2(Lin_Model_Predictions, train_data$rating, test_data$rating)
+MAE_Lin
+RMSE_Lin
+OSR_Lin
+
+
+```
+
+
+```{r Random Forest}
+set.seed(3592)
+rf.mod <- ranger(rating ~ genre + cf + year, 
+                 data = train_data, 
+                 mtry = floor((ncol(train_data) - 3)/3), 
+                 num.trees = 500,
+                 verbose = TRUE)
+
+preds.rf <- predict(rf.mod, data = test_data)
+preds.rf <- preds.rf$predictions
+mean(abs(preds.rf - test_data$rating))/4
+sqrt(mean((preds.rf - test_data$rating)^2))/4
+OSR2(preds.rf, train_data$rating, test_data$rating)
+
+```
+
+
+```{r partd}
+#partc, there are three parameters in the model. There are 266256 observations to train with.
+mae.vals = rep(NA, 20) 
+for (rnk in seq_len(20)) {
+print(str_c("Trying rank.max = ", rnk))
+model = softImpute(mat.train_biscale, rank.max = rnk, lambda = 0, maxit = 1000)
+val_pred = impute(model, valsetB$userID, valsetB$songID)
+mae.vals[rnk] = mean(abs(val_pred - valsetB$rating))
+}
+
+mae.val2.df <- data.frame(rnk = seq_len(20), mae = mae.vals)
+
+ggplot(mae.val2.df, aes(x = rnk, y = mae)) + geom_point(size = 3) + ylab("Validation MAE") + xlab("Number of Archetypal Users") +  theme_bw() + theme(axis.title=element_text(size=18),  axis.text=element_text(size=18))
+
+#Part C subpart 3
+# choose k = 4
+Final_model2 = softImpute(mat.train_biscale, rank.max = 4, lambda = 0, maxit = 1000) 
+Test_Prediction2 = impute(Final_model, test_data$userID, test_data$songID)
+MAE_Final2 = mean(abs(Test_Prediction - test_data$rating)) 
+RMSE_Final2 = sqrt(mean((Test_Prediction - test_data$rating)^2))
+OSR_Final2 = OSR2(Test_Prediction, train_data$rating, test_data$rating) 
+MAE_Final2
+RMSE_Final2
+OSR_Final2
+
+# Blending
+# First get validation set predictions 
+# Note: this step is not totally proper. The reason for this is that we have already used the 
+# validation set when selecting k for the CF model. We should technically re-do this analysis
+# with an additional validation set that is exclusively for blending and has not been touched
+# until this point. However, since we only selected a single parameter k there is not too much
+# data leakage here. And to keep the results comparable to the previous results, we do not re-do
+# the analysis.
+
+val.preds.cf <- impute(Final_model2, valsetB$userID, valsetB$songID)
+val.preds.lm <- predict(Train_Lin_Model , newdata = valsetB)
+val.preds.rf <- predict(rf.mod, data = valsetB)$predictions
+
+# Build validation set data frame
+val.blending_df = data.frame(rating = valsetB$rating, cf_preds = val.preds.cf, 
+                             lm_preds = val.preds.lm, rf_preds = val.preds.rf)
+
+# Train blended model
+blend.mod = lm(rating ~ ., data = val.blending_df)
+
+
+# Get predictions on test set
+test.preds.cf <- impute(Final_model2, test_data$userID, test_data$songID)
+test.preds.lm <- predict(Train_Lin_Model, newdata = test_data)
+test.preds.rf <- predict(rf.mod, data = test_data)$predictions
+
+test.blending_df = data.frame(rating = test_data$rating, cf_preds = test.preds.cf, 
+                              lm_preds = test.preds.lm, rf_preds = test.preds.rf)
+
+test.preds.blend <- predict(blend.mod, newdata = test.blending_df)
+
+mean(abs(test.preds.blend - test_data$rating))/4
+sqrt(mean((test.preds.blend - test_data$rating)^2))/4
+OSR2(test.preds.blend, train_data$rating, test_data$rating)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
